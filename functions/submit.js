@@ -1,17 +1,33 @@
-export async function onRequestGet(context) {
+export async function onRequestPost(context) {
     const { env, request } = context;
-    const url = new URL(request.url);
-    const key = url.searchParams.get("key");
-
-    // Sicherheit: Prüft, ob dein Secret in der URL stimmt
-    if (key !== env.ADMIN_SECRET) {
-        return new Response("Nicht autorisiert.", { status: 401 });
-    }
-
-    const kv = env.CHALLENGE_DATA;
+    const db = env.DB; // Dein D1 Binding
     
-    // Löscht die aktuelle Liste komplett
-    await kv.delete("main_list");
+    // 1. Namen aus dem Cookie extrahieren
+    const cookieHeader = request.headers.get("Cookie") || "";
+    const nameMatch = cookieHeader.match(/twitch_user=([^;]+)/);
+    
+    if (!nameMatch) {
+        return new Response("Nicht eingeloggt", { status: 401 });
+    }
+    
+    const twitchName = decodeURIComponent(nameMatch[1]);
+    const { time } = await request.json();
+    const reactionTime = parseFloat(time);
 
-    return new Response("Leaderboard erfolgreich zurückgesetzt! Neue Runde kann starten.", { status: 200 });
+    try {
+        // 2. SQL: Einfügen oder Update, falls Zeit besser ist
+        // Wir nutzen "best_time = MIN(...)", damit nur schnellere Klicks zählen
+        await db.prepare(`
+            INSERT INTO leaderboard (twitch_name, best_time) 
+            VALUES (?, ?) 
+            ON CONFLICT(twitch_name) DO UPDATE SET 
+            best_time = MIN(leaderboard.best_time, EXCLUDED.best_time)
+        `).bind(twitchName, reactionTime).run();
+
+        return new Response(JSON.stringify({ success: true }), {
+            headers: { "Content-Type": "application/json" }
+        });
+    } catch (e) {
+        return new Response("Datenbankfehler: " + e.message, { status: 500 });
+    }
 }
