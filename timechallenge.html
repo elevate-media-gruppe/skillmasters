@@ -5,6 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skillmasters - Time-Challenge</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Zusätzliches Styling für die Tabelle */
+        #leaderboard {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+            font-size: 1.1rem;
+        }
+        #leaderboard th, #leaderboard td {
+            padding: 12px;
+            border-bottom: 1px solid #333;
+            text-align: left;
+        }
+        /* Top 5 Gold Effekt: Fett, Glänzend, Gold */
+        .gold-rank {
+            color: #FFD700 !important;
+            font-weight: bold !important;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+            animation: shimmer 2s infinite alternate;
+        }
+        @keyframes shimmer {
+            from { filter: brightness(1); }
+            to { filter: brightness(1.4); }
+        }
+    </style>
 </head>
 <body>
 
@@ -16,114 +41,161 @@
         <a href="partner.html">Partner an Bord</a>
     </nav>
 
-    <main style="text-align: center; width: 100%;">
+    <main style="text-align: center; width: 100%; padding: 20px; box-sizing: border-box;">
         
         <!-- Status Anzeige -->
-        <div id="status-box" style="margin: 20px; font-size: 1.2rem;">
-            Bitte mit Twitch einloggen...
+        <div id="status-box" style="margin: 20px 0; font-size: 1.2rem; min-height: 1.5em;">
+            Lade Status...
         </div>
 
-        <!-- Der Challenge Button (Zentrales Element) -->
+        <!-- Der Challenge Button -->
         <button id="challenge-btn">JETZT STARTEN</button>
 
         <!-- Die Rangliste -->
-        <section style="margin-top: 50px; width: 90%; max-width: 500px; margin-left: auto; margin-right: auto;">
-            <h2 style="border-bottom: 1px solid white;">LEADERBOARD</h2>
-            <table id="leaderboard" style="width: 100%; border-collapse: collapse; text-align: left;">
+        <section style="margin-top: 50px; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto;">
+            <h2 style="border-bottom: 1px solid white; text-align: left; letter-spacing: 2px;">LEADERBOARD</h2>
+            <table id="leaderboard">
                 <thead>
-                    <tr style="border-bottom: 1px solid #444;">
+                    <tr>
                         <th>Rang</th>
                         <th>Name</th>
                         <th>Zeit (s)</th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard-body">
-                    <!-- Daten kommen via JavaScript -->
+                    <!-- Daten werden via JavaScript geladen -->
                 </tbody>
             </table>
         </section>
     </main>
 
     <script>
-    // 1. Cookie auslesen, um den Twitch-Namen zu finden
-    function getCookie(name) {
-        let value = "; " + document.cookie;
-        let parts = value.split("; " + name + "=");
-        if (parts.length === 2) return parts.pop().split(";").shift();
-    }
+        // --- LOGIK-VARIABLEN ---
+        let startTime;
+        let isCounting = false;
+        let countdownValue = 10;
+        let timerInterval;
 
-    const twitchUser = getCookie("twitch_user");
-    const status = document.getElementById('status-box');
-    const btn = document.getElementById('challenge-btn');
+        const btn = document.getElementById('challenge-btn');
+        const status = document.getElementById('status-box');
+        const leaderboardBody = document.getElementById('leaderboard-body');
 
-    // 2. Login-Check
-    if (!twitchUser) {
-        status.innerHTML = '<a href="/functions/auth" style="color:white; text-decoration:underline;">Bitte mit Twitch einloggen, um teilzunehmen</a>';
-        btn.disabled = true;
-    } else {
-        status.innerText = "Willkommen, " + decodeURIComponent(twitchUser) + "! Bereit für den Skill-Test?";
-        btn.disabled = false;
-    }
-
-    // Timer-Logik (bleibt wie zuvor)
-    let startTime;
-    let isCounting = false;
-    let countdownValue = 10;
-    let timerInterval;
-
-    btn.addEventListener('click', () => {
-        if (!isCounting && btn.innerText === "JETZT STARTEN") {
-            startCountdown();
-        } else if (isCounting) {
-            handleEarlyClick();
-        } else if (btn.innerText === "KLICKEN!") {
-            finishChallenge();
+        // --- AUTH CHECK ---
+        function getCookie(name) {
+            let value = "; " + document.cookie;
+            let parts = value.split("; " + name + "=");
+            if (parts.length === 2) return parts.pop().split(";").shift();
         }
-    });
 
-    function startCountdown() {
-        isCounting = true;
-        countdownValue = 10;
-        btn.innerText = countdownValue;
-        timerInterval = setInterval(() => {
-            countdownValue--;
-            if (countdownValue > 0) {
-                btn.innerText = countdownValue;
-            } else {
-                clearInterval(timerInterval);
-                btn.innerText = "KLICKEN!";
-                btn.style.background = "#00ff00"; 
-                startTime = performance.now();
-                isCounting = false;
+        const twitchUser = getCookie("twitch_user");
+
+        if (!twitchUser) {
+            status.innerHTML = '<a href="/functions/auth" style="color:white; text-decoration:underline;">Bitte mit Twitch einloggen</a>';
+            btn.disabled = true;
+            btn.style.opacity = "0.5";
+        } else {
+            status.innerText = "Bereit, " + decodeURIComponent(twitchUser) + "?";
+            loadLeaderboard(); // Tabelle direkt beim Start laden
+        }
+
+        // --- BUTTON LOGIK ---
+        btn.addEventListener('click', () => {
+            if (!isCounting && btn.innerText === "JETZT STARTEN") {
+                startCountdown();
+            } else if (isCounting) {
+                handleEarlyClick();
+            } else if (btn.innerText === "KLICKEN!") {
+                finishChallenge();
             }
-        }, 1000);
-    }
+        });
 
-    function handleEarlyClick() {
-        clearInterval(timerInterval);
-        isCounting = false;
-        btn.innerText = "FEHLSTART!";
-        btn.style.background = "red";
-        setTimeout(() => { resetButton(); }, 2000);
-    }
+        function startCountdown() {
+            isCounting = true;
+            countdownValue = 10;
+            btn.innerText = countdownValue;
+            btn.style.background = "white";
+            
+            timerInterval = setInterval(() => {
+                countdownValue--;
+                if (countdownValue > 0) {
+                    btn.innerText = countdownValue;
+                } else {
+                    clearInterval(timerInterval);
+                    btn.innerText = "KLICKEN!";
+                    btn.style.background = "#00ff00"; // Grün für GO
+                    startTime = performance.now();
+                    isCounting = false;
+                }
+            }, 1000);
+        }
 
-    function finishChallenge() {
-        const reactionTime = ((performance.now() - startTime) / 1000).toFixed(4);
-        btn.disabled = true;
-        btn.innerText = reactionTime + "s";
-        status.innerText = "Speichere Ergebnis für " + twitchUser + "...";
-        
-        // Der nächste Schritt ist der POST an /functions/submit
-    }
+        function handleEarlyClick() {
+            clearInterval(timerInterval);
+            isCounting = false;
+            btn.innerText = "FEHLSTART!";
+            btn.style.background = "red";
+            status.innerText = "Zu früh! Versuch es noch einmal.";
+            setTimeout(() => { resetButton(); }, 2000);
+        }
 
-    function resetButton() {
-        btn.innerText = "JETZT STARTEN";
-        btn.style.background = "white";
-        btn.disabled = false;
-    }
+        async function finishChallenge() {
+            const reactionTime = ((performance.now() - startTime) / 1000).toFixed(4);
+            btn.disabled = true;
+            btn.style.background = "#444";
+            btn.innerText = reactionTime + "s";
+            status.innerText = "Speichere Ergebnis...";
+
+            try {
+                const response = await fetch('/functions/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ time: reactionTime })
+                });
+
+                if (response.ok) {
+                    status.innerText = "Erfolgreich! Dein Platz steht in der Tabelle.";
+                    loadLeaderboard(); // Tabelle nach Klick aktualisieren
+                } else {
+                    status.innerText = "Fehler oder bereits teilgenommen.";
+                }
+            } catch (e) {
+                status.innerText = "Verbindungsfehler zum Server.";
+            }
+        }
+
+        function resetButton() {
+            btn.innerText = "JETZT STARTEN";
+            btn.style.background = "white";
+            btn.disabled = false;
+            status.innerText = "Bereit, " + decodeURIComponent(twitchUser) + "?";
+        }
+
+        // --- TABELLE LADEN ---
+        async function loadLeaderboard() {
+            try {
+                // Wir erstellen gleich noch die passende /functions/leaderboard.js
+                const response = await fetch('/functions/leaderboard');
+                const data = await response.json();
+                
+                leaderboardBody.innerHTML = "";
+                data.forEach((entry, index) => {
+                    const row = document.createElement('tr');
+                    const rank = index + 1;
+                    
+                    // Top 5 Styling anwenden
+                    if (rank <= 5) row.classList.add('gold-rank');
+
+                    row.innerHTML = `
+                        <td>${rank}</td>
+                        <td>${decodeURIComponent(entry.name)}</td>
+                        <td>${entry.time}</td>
+                    `;
+                    leaderboardBody.appendChild(row);
+                });
+            } catch (e) {
+                console.log("Leaderboard konnte nicht geladen werden.");
+            }
+        }
     </script>
-    
-
 </body>
 </html>
-
